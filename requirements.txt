@@ -1,0 +1,24 @@
+# --- Web framework ---
+fastapi==0.115.0
+uvicorn[standard]==0.32.0
+
+# --- Database (async, used by the app at runtime) ---
+sqlalchemy[asyncio]==2.0.35
+asyncpg==0.30.0
+
+# --- Migrations (Alembic + a sync driver used ONLY for migrations) ---
+alembic==1.13.3
+psycopg2-binary==2.9.9
+
+# --- Redis ---
+redis==5.1.1
+
+# --- Settings & validation ---
+pydantic==2.9.2
+pydantic-settings==2.5.2
+email-validator==2.2.0
+
+# --- Security (auth) ---
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1                       # pin: passlib 1.7.4 isn't compatible with bcrypt >= 4.1
+python-jose[cryptography]==3.3.0
