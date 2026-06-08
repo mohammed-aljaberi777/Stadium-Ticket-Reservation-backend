@@ -63,15 +63,19 @@ async def login(
             db,
             email=body.email,
             password=body.password,
+            totp_code=body.totp_code,
         )
     except auth_service.AuthError as exc:
-        # ACCOUNT_DISABLED -> 403, everything else -> 401
+        # ACCOUNT_DISABLED -> 403, everything else -> 401 with the error code
         code = (
             status.HTTP_403_FORBIDDEN
             if exc.code == "ACCOUNT_DISABLED"
             else status.HTTP_401_UNAUTHORIZED
         )
-        raise HTTPException(status_code=code, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
 
     return auth_service.issue_token_pair(user)
 

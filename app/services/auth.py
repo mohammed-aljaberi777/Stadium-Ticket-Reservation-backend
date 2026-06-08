@@ -75,19 +75,20 @@ async def authenticate_user(
     *,
     email: str,
     password: str,
+    totp_code: str | None = None,
 ) -> User:
     """
-    Verify email + password.
+    Verify email + password (+ TOTP if the user has 2FA enabled).
 
-    On failure, ALWAYS raise the same message ('Invalid email or password'),
-    regardless of whether the email was unknown or the password was wrong.
-    This prevents email-enumeration: an attacker should not be able to learn
-    which emails are registered by varying the input.
+    On password failure: always the same generic error (prevents email
+    enumeration). On 2FA failure: a distinct error so the frontend knows to
+    show the 2FA-code prompt.
     """
+    from app.services.totp import verify_code  # local to avoid a circular import
+
     user = await db.scalar(select(User).where(User.email == email.lower()))
 
     if user is None:
-        # Spend roughly the same time as a real verify, so timing doesn't leak info.
         verify_password(password, _DUMMY_HASH)
         raise AuthError("Invalid email or password", code="INVALID_CREDENTIALS")
 
@@ -96,6 +97,19 @@ async def authenticate_user(
 
     if not user.is_active:
         raise AuthError("Account is disabled", code="ACCOUNT_DISABLED")
+
+    # ---- 2FA gate ----
+    if user.totp_enabled:
+        if not totp_code:
+            raise AuthError(
+                "A 2FA code is required to complete login",
+                code="TOTP_REQUIRED",
+            )
+        if not verify_code(user.totp_secret or "", totp_code):
+            raise AuthError(
+                "Invalid 2FA code",
+                code="TOTP_INVALID",
+            )
 
     return user
 

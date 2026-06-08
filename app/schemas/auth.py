@@ -16,6 +16,7 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str
+    totp_code: str | None = None  # required only if the user has enabled 2FA
 
 
 class RefreshRequest(BaseModel):

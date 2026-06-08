@@ -25,3 +25,6 @@ python-jose[cryptography]==3.3.0
 
 # --- QR code generation ---
 qrcode[pil]==7.4.2
+
+# --- 2FA (TOTP) ---
+pyotp==2.9.0

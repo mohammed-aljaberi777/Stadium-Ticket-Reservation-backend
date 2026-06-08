@@ -1,5 +1,5 @@
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import String
+from sqlalchemy import String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import BaseModel
@@ -28,3 +28,12 @@ class User(BaseModel):
 
     # Soft-disable an account without deleting it (keeps booking history intact).
     is_active: Mapped[bool] = mapped_column(default=True)
+
+    # --- 2FA (TOTP) ---
+    # totp_secret is the per-user base32 secret. Stays NULL until 2FA setup.
+    # In production it should be encrypted at rest; for this project we store as text.
+    totp_secret: Mapped[str | None] = mapped_column(String(64), nullable=True, default=None)
+    totp_enabled: Mapped[bool] = mapped_column(
+        default=False,
+        server_default=text("false"),  # for migrations on existing rows
+    )
