@@ -76,3 +76,28 @@ def decode_token(token: str) -> dict[str, Any]:
     or it has expired. The caller is responsible for handling that error.
     """
     return jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+
+
+# ---------- QR-ticket token ----------
+
+def create_qr_token(
+    ticket_id: str | UUID,
+    match_id: str | UUID,
+    user_id: str | UUID,
+) -> str:
+    """
+    Build the signed JWT embedded inside a ticket's QR code.
+
+    No `exp` claim — the ticket's authority is its own `status` (ISSUED / USED /
+    REVOKED) in the database, not the token's expiry. The signature is what
+    prevents anyone from forging a QR; it carries (ticket_id, match_id, user_id)
+    so the gate scanner can sanity-check the displayed name.
+    """
+    payload = {
+        "ticket_id": str(ticket_id),
+        "match_id": str(match_id),
+        "user_id": str(user_id),
+        "type": "ticket",
+        "iat": int(datetime.now(timezone.utc).timestamp()),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)

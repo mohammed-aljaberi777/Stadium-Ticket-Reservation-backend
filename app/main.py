@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import admin, auth, health, holds, matches
+from app.api import admin, auth, bookings, health, holds, matches, tickets, verify
 from app.core.config import settings
 from app.db.redis import redis_client
 from app.db.session import engine
@@ -30,6 +30,9 @@ app.include_router(auth.router)
 app.include_router(matches.router)
 app.include_router(admin.router)
 app.include_router(holds.router)
+app.include_router(bookings.router)
+app.include_router(tickets.router)
+app.include_router(verify.router)
 
 
 @app.get("/")
