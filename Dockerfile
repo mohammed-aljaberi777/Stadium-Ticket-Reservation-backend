@@ -18,6 +18,10 @@ COPY ./app ./app
 COPY alembic.ini .
 COPY ./alembic ./alembic
 
+# Startup script (runs migrations then launches uvicorn).
+COPY start.sh .
+RUN chmod +x start.sh
+
 EXPOSE 8000
 
 # Default command (docker-compose overrides this with --reload for dev)
