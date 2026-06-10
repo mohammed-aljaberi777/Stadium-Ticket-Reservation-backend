@@ -125,6 +125,22 @@ async def create_hold(
     if match is None:
         raise HoldError("Match not found", code="MATCH_NOT_FOUND")
 
+    # --- 1b. Sales window check ---
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
+    if match.sales_open_at and now < match.sales_open_at:
+        raise HoldError(
+            "Ticket sales for this match have not opened yet.",
+            code="SALES_NOT_OPEN",
+            details={"sales_open_at": match.sales_open_at.isoformat()},
+        )
+    if match.sales_close_at and now > match.sales_close_at:
+        raise HoldError(
+            "Ticket sales for this match have closed.",
+            code="SALES_CLOSED",
+            details={"sales_close_at": match.sales_close_at.isoformat()},
+        )
+
     # --- 2. All seats exist, belong to the match, and are AVAILABLE ---
     seats = (
         await db.scalars(

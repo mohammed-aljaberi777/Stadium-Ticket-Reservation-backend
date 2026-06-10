@@ -7,10 +7,18 @@ return the result. All the actual logic lives in app/services/auth.py.
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    client_ip,
+    enforce_rate_limit,
+    raise_429,
+)
+from app.db.redis import get_redis
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import (
@@ -32,9 +40,18 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 )
 async def register(
     body: RegisterRequest,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
 ) -> TokenPair:
     """Create a new fan account and return access + refresh tokens."""
+    # --- Rate limit: 3/min per IP (anti-spam-account creation) ---
+    ip = client_ip(request)
+    try:
+        await enforce_rate_limit(redis_client, f"rl:register:ip:{ip}", limit=3, window_seconds=60)
+    except RateLimitExceeded as exc:
+        raise_429(exc)
+
     try:
         user = await auth_service.register_user(
             db,
@@ -55,9 +72,21 @@ async def register(
 @router.post("/login", response_model=TokenPair)
 async def login(
     body: LoginRequest,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
+    redis_client: Annotated[Redis, Depends(get_redis)],
 ) -> TokenPair:
     """Exchange email + password for a fresh token pair."""
+    # --- Rate limits: 10/min/IP and 5/min/email (anti-password-stuffing) ---
+    ip = client_ip(request)
+    try:
+        await enforce_rate_limit(redis_client, f"rl:login:ip:{ip}", limit=10, window_seconds=60)
+        await enforce_rate_limit(
+            redis_client, f"rl:login:email:{body.email.lower()}", limit=5, window_seconds=60
+        )
+    except RateLimitExceeded as exc:
+        raise_429(exc)
+
     try:
         user = await auth_service.authenticate_user(
             db,

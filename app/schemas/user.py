@@ -9,7 +9,7 @@ from app.models.enums import UserRole
 
 
 class UserResponse(BaseModel):
-    """Public shape of a user (NEVER includes password_hash)."""
+    """Public shape of a user (NEVER includes password_hash or totp_secret)."""
 
     # from_attributes=True lets Pydantic read fields off a SQLAlchemy model object
     # — so we can return `UserResponse.model_validate(user)` directly.
@@ -20,4 +20,5 @@ class UserResponse(BaseModel):
     full_name: str
     role: UserRole
     is_active: bool
+    totp_enabled: bool
     created_at: datetime

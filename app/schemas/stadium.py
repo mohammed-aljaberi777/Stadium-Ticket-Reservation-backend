@@ -20,3 +20,7 @@ class StadiumResponse(BaseModel):
     name: str
     city: str
     capacity: int
+
+
+class StadiumListResponse(BaseModel):
+    items: list[StadiumResponse]

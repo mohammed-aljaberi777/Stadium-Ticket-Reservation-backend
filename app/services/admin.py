@@ -6,6 +6,7 @@ plain Python arguments and either returns model instances or raises
 ServiceError, which the API layer converts to the appropriate HTTP response.
 """
 
+from decimal import Decimal
 from uuid import UUID
 
 from sqlalchemy import select
@@ -47,11 +48,22 @@ async def create_team(db: AsyncSession, data: TeamCreate) -> Team:
         name=data.name,
         short_name=data.short_name,
         country=data.country,
+        logo_url=data.logo_url,
     )
     db.add(team)
     await db.commit()
     await db.refresh(team)
     return team
+
+
+async def list_teams(db: AsyncSession) -> list[Team]:
+    """Return all teams, ordered by name."""
+    return list((await db.scalars(select(Team).order_by(Team.name))).all())
+
+
+async def list_stadiums(db: AsyncSession) -> list[Stadium]:
+    """Return all stadiums, ordered by name."""
+    return list((await db.scalars(select(Stadium).order_by(Stadium.name))).all())
 
 
 # ---------- Stadiums ----------
@@ -69,6 +81,72 @@ async def create_stadium(db: AsyncSession, data: StadiumCreate) -> Stadium:
 
 
 # ---------- Matches ----------
+
+# Default price per (category, tier) — used when auto-generating inventory
+# for a freshly created match. Admin can override later via the inventory endpoint.
+_DEFAULT_PRICE_BY_CATEGORY_TIER = {
+    # category, tier -> price in EUR
+    ("STANDARD", "LOWER"): Decimal("75.00"),
+    ("STANDARD", "MIDDLE"): Decimal("100.00"),
+    ("STANDARD", "UPPER"): Decimal("65.00"),
+    ("PREMIUM", "LOWER"): Decimal("120.00"),
+    ("PREMIUM", "MIDDLE"): Decimal("150.00"),
+    ("PREMIUM", "UPPER"): Decimal("95.00"),
+    ("VIP", "LOWER"): Decimal("350.00"),
+    ("VIP", "MIDDLE"): Decimal("400.00"),
+    ("VIP", "UPPER"): Decimal("300.00"),
+    ("AWAY", "LOWER"): Decimal("60.00"),
+    ("AWAY", "MIDDLE"): Decimal("60.00"),
+    ("AWAY", "UPPER"): Decimal("60.00"),
+}
+
+
+async def _auto_generate_inventory(db: AsyncSession, match: Match) -> int:
+    """
+    Generate match_seats for ALL existing seats in the stadium, with
+    default prices based on each section's (category, tier).
+    Returns the number of rows created.
+    """
+    # All sections in this stadium
+    sections = (
+        await db.scalars(
+            select(Section).where(Section.stadium_id == match.stadium_id)
+        )
+    ).all()
+
+    total_created = 0
+    for section in sections:
+        price = _DEFAULT_PRICE_BY_CATEGORY_TIER.get(
+            (section.category.value, section.tier.value),
+            Decimal("75.00"),
+        )
+
+        seats = (
+            await db.scalars(select(Seat).where(Seat.section_id == section.id))
+        ).all()
+
+        if not seats:
+            continue
+
+        match_seats = [
+            MatchSeat(
+                match_id=match.id,
+                seat_id=seat.id,
+                price=price,
+                status=MatchSeatStatus.AVAILABLE,
+            )
+            for seat in seats
+        ]
+        db.add_all(match_seats)
+        total_created += len(match_seats)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()  # already generated — silently ignore
+        total_created = 0
+    return total_created
+
 
 async def create_match(db: AsyncSession, data: MatchCreate) -> Match:
     # --- business-rule validation ---
@@ -100,6 +178,12 @@ async def create_match(db: AsyncSession, data: MatchCreate) -> Match:
     )
     db.add(match)
     await db.commit()
+    await db.refresh(match)
+
+    # --- Auto-generate match_seats inventory with default prices ---
+    # Without this, the new match has no sections/seats visible to fans.
+    # Admin can later update prices via POST /v1/admin/matches/{id}/inventory.
+    await _auto_generate_inventory(db, match)
 
     # Re-fetch with relationships loaded for a nice nested response
     query = (

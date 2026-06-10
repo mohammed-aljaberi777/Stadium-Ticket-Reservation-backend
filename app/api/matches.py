@@ -57,6 +57,44 @@ async def get_match(
     return MatchResponse.model_validate(match)
 
 
+@router.get("/{match_id}/seats")
+async def get_match_seats(
+    match_id: UUID,
+    section_id: UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
+) -> dict:
+    """Return available seats in a section for a match (for the seat picker)."""
+    from sqlalchemy import select
+    from app.models.match_seat import MatchSeat
+    from app.models.seat import Seat
+    from app.models.enums import MatchSeatStatus
+
+    q = (
+        select(MatchSeat, Seat)
+        .join(Seat, Seat.id == MatchSeat.seat_id)
+        .where(
+            MatchSeat.match_id == match_id,
+            Seat.section_id == section_id,
+            MatchSeat.status == MatchSeatStatus.AVAILABLE,
+        )
+        .order_by(Seat.row_number, Seat.seat_number)
+        .limit(limit)
+    )
+    rows = (await db.execute(q)).all()
+    return {
+        "items": [
+            {
+                "match_seat_id": str(ms.id),
+                "row": s.row_number,
+                "seat": s.seat_number,
+                "price": str(ms.price),
+            }
+            for ms, s in rows
+        ]
+    }
+
+
 @router.get("/{match_id}/sections", response_model=SectionSummaryListResponse)
 async def get_section_summaries(
     match_id: UUID,

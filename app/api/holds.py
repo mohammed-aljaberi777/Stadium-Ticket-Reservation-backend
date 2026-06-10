@@ -3,12 +3,18 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import status as http_status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
+from app.core.rate_limit import (
+    RateLimitExceeded,
+    client_ip,
+    enforce_rate_limit,
+    raise_429,
+)
 from app.db.redis import get_redis
 from app.db.session import get_db
 from app.models.user import User
@@ -31,11 +37,24 @@ router = APIRouter(tags=["holds"])
 async def create_hold(
     match_id: UUID,
     body: HoldCreate,
+    request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     redis_client: Annotated[Redis, Depends(get_redis)],
     current_user: Annotated[User, Depends(get_current_user)],
 ) -> HoldResponse:
     """Lock the given seats for the current user for 5 minutes."""
+    # --- Rate limits: 10/min/user, 20/min/IP ---
+    ip = client_ip(request)
+    try:
+        await enforce_rate_limit(
+            redis_client, f"rl:hold:user:{current_user.id}", limit=10, window_seconds=60
+        )
+        await enforce_rate_limit(
+            redis_client, f"rl:hold:ip:{ip}", limit=20, window_seconds=60
+        )
+    except RateLimitExceeded as exc:
+        raise_429(exc)
+
     try:
         result = await hold_service.create_hold(
             db,

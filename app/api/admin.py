@@ -20,8 +20,8 @@ from app.schemas.seat import (
     SeatBulkCreate,
     SeatBulkCreateResponse,
 )
-from app.schemas.stadium import StadiumCreate, StadiumResponse
-from app.schemas.team import TeamCreate, TeamResponse
+from app.schemas.stadium import StadiumCreate, StadiumListResponse, StadiumResponse
+from app.schemas.team import TeamCreate, TeamListResponse, TeamResponse
 from app.services import admin as admin_service
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
@@ -45,6 +45,16 @@ async def create_team(
     return TeamResponse.model_validate(team)
 
 
+@router.get("/teams", response_model=TeamListResponse)
+async def list_teams(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: RequireAdmin,
+) -> TeamListResponse:
+    """List all teams — used by the New Match form dropdown."""
+    teams = await admin_service.list_teams(db)
+    return TeamListResponse(items=[TeamResponse.model_validate(t) for t in teams])
+
+
 @router.post(
     "/stadiums",
     response_model=StadiumResponse,
@@ -57,6 +67,16 @@ async def create_stadium(
 ) -> StadiumResponse:
     stadium = await admin_service.create_stadium(db, body)
     return StadiumResponse.model_validate(stadium)
+
+
+@router.get("/stadiums", response_model=StadiumListResponse)
+async def list_stadiums(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _admin: RequireAdmin,
+) -> StadiumListResponse:
+    """List all stadiums — used by the New Match form dropdown."""
+    stadiums = await admin_service.list_stadiums(db)
+    return StadiumListResponse(items=[StadiumResponse.model_validate(s) for s in stadiums])
 
 
 @router.post(
